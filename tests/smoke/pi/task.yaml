@@ -94,22 +94,44 @@ execute: |
         /snap/pi-coding-agent/current/lib/pi/packages/coding-agent/dist/bundle
 
     # Every npm workspace symlink must resolve inside the payload. The
-    # workspace package set is derived at build time from the actual dist/
-    # imports (snap/local/pi-workspace-packages.mjs); a dangling symlink
-    # here means a package the runtime imports was not shipped (e.g.
-    # @earendil-works/chord in pi 0.85.1, the reason this guard exists),
-    # which would crash the CLI with ERR_MODULE_NOT_FOUND. Check the whole
+    # workspace package set is derived from compiled imports and production
+    # dependencies (snap/local/pi-workspace-packages.mjs). Check the whole
     # payload because npm also nests workspace links under per-package
     # node_modules/.
     test -z "$(find /snap/pi-coding-agent/current/lib/pi -type l \
         ! -exec test -e {} \; -print -quit)"
 
-    # Every production dependency declared by a shipped workspace package
-    # must resolve from that package. npm nests a dep under the package's
-    # own node_modules/ when the root holds an incompatible version (e.g.
-    # pi-ai's openai@7); the assembly copies those nested dirs too. Shipping
-    # only the root node_modules dropped openai and crashed pi 0.99.
-    # @earendil-works/* deps are workspace packages covered above.
+    # A resolved workspace symlink is not sufficient: the assembly step
+    # removes dangling links, so an omitted production dependency (like
+    # chord in 1.1.0) otherwise passes the check above. Verify every
+    # declared production workspace dependency has a shipped target.
+    /snap/pi-coding-agent/current/node/bin/node -e '
+      const fs = require("fs");
+      const path = require("path");
+      const PI = "/snap/pi-coding-agent/current/lib/pi";
+      let bad = false;
+      for (const pkg of fs.readdirSync(path.join(PI, "packages"))) {
+        const manifestPath = path.join(PI, "packages", pkg, "package.json");
+        const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+        for (const dep of Object.keys(manifest.dependencies || {})) {
+          if (!dep.startsWith("@earendil-works/")) continue;
+          const link = path.join(PI, "node_modules", dep);
+          if (fs.existsSync(link)) continue;
+          console.error("packages/" + pkg + ": missing production workspace dependency " + dep);
+          bad = true;
+        }
+      }
+      process.exit(bad ? 1 : 0);
+    '
+    # The subagent async runner loads this public subpath even though the
+    # CLI's compiled code does not import chord directly.
+    (cd /snap/pi-coding-agent/current/lib/pi/packages/coding-agent && \
+      /snap/pi-coding-agent/current/node/bin/node --input-type=module -e \
+      'await import("@earendil-works/chord/context")')
+
+    # Third-party (non-workspace) production dependencies may be nested
+    # under individual package node_modules/ rather than the root (e.g.
+    # pi-ai's openai@7); copying only root node_modules broke pi 0.99.
     /snap/pi-coding-agent/current/node/bin/node -e '
       const fs = require("fs");
       const path = require("path");

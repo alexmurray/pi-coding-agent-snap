@@ -202,16 +202,13 @@ parts:
       # keep resolving correctly.
       #
       # The set of workspace packages to ship is DERIVED, not hardcoded:
-      # snap/local/pi-workspace-packages.mjs walks the actual
-      # @earendil-works/* imports in the built dist/ starting from the CLI
-      # entry (coding-agent) until a fixpoint. A hardcoded list silently
-      # breaks when upstream adds a new workspace package (e.g.
-      # @earendil-works/chord in pi 0.85.1): npm resolves the workspace
-      # symlink inside the build tree, so `npm ci`/`npm prune` succeed,
-      # but the symlink then dangles in the installed snap and the CLI
-      # dies with ERR_MODULE_NOT_FOUND. packages/session-backends and
-      # packages/server are workspace packages too but nothing the CLI
-      # loads imports them, so they are correctly excluded.
+      # snap/local/pi-workspace-packages.mjs follows both compiled
+      # @earendil-works/* imports and production workspace dependencies
+      # from coding-agent until a fixpoint. CLI-only imports miss packages
+      # consumed by extensions or detached children (e.g. chord in 1.1.0).
+      # npm resolves links in the build tree even when their targets are
+      # omitted from the snap, so `npm ci`/`npm prune` cannot catch this.
+      # dev-only workspaces (e.g. pi-server) remain excluded.
       # ----------------------------------------------------------
       WSP_SCRIPT="${CRAFT_PROJECT_DIR}/snap/local/pi-workspace-packages.mjs"
       test -f "$WSP_SCRIPT" || {
@@ -283,9 +280,9 @@ parts:
 
       # node_modules/ links every workspace package via npm, not just the
       # ones in the runtime closure. Drop symlinks whose target package
-      # was not shipped so the payload has no dead references — turning
-      # the "new workspace package" failure mode above into a build error,
-      # not a runtime ERR_MODULE_NOT_FOUND. Run before coding-agent is
+      # was not shipped so the payload has no dead build-only references.
+      # The smoke test checks that no production workspace dependency was
+      # dropped. Run before coding-agent is
       # copied: that also removes its now-dangling workspace link and
       # .bin/pi (which points into dist/bundle, stripped below).
       find "${PI_HOME}" -type l ! -exec test -e {} \; -delete
