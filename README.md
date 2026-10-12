@@ -51,12 +51,14 @@ container:
 7. **Assemble runtime payload** into `$SNAP/lib/pi/` — pruned `node_modules/`
    plus `dist/`, `package.json`/`README.md`, and each workspace package's own
    nested `node_modules/` when npm placed production deps there instead of
-   hoisting them (e.g. pi-ai's `openai@7`). The set is *derived* from the
-   actual `@earendil-works/*` imports in the built `dist/` (see
-   `snap/local/pi-workspace-packages.mjs`) rather than hardcoded, so an
-   upstream pi release that adds a new workspace package cannot ship a
-   dangling symlink again; dangling symlinks are deleted from the payload,
-   then maps, `.d.ts` files, and the `dist/bundle` duplicate are stripped
+   hoisting them (e.g. pi-ai's `openai@7`). The workspace package set is
+   *derived* by `snap/local/pi-workspace-packages.mjs` from both compiled
+   `@earendil-works/*` imports and transitive declared production workspace
+   dependencies (not `devDependencies`). This includes packages needed by
+   extensions and detached runners even when the CLI does not import them
+   directly (e.g. `@earendil-works/chord` in pi 1.1.0). Dangling workspace
+   symlinks are deleted from the payload; maps, `.d.ts` files, and the
+   `dist/bundle` duplicate are then stripped
 8. **Bundle the Node.js runtime** at `$SNAP/node/bin/node`; the wrapper
    script execs it against `packages/coding-agent/dist/cli.js`
 9. **Install `wl-clipboard`** from Ubuntu package via `stage-packages` for

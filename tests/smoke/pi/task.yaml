@@ -94,41 +94,54 @@ execute: |
         /snap/pi-coding-agent/current/lib/pi/packages/coding-agent/dist/bundle
 
     # Every npm workspace symlink must resolve inside the payload. The
-    # workspace package set is derived at build time from the actual dist/
-    # imports (snap/local/pi-workspace-packages.mjs); a dangling symlink
-    # here means a package the runtime imports was not shipped (e.g.
-    # @earendil-works/chord in pi 0.85.1, the reason this guard exists),
-    # which would crash the CLI with ERR_MODULE_NOT_FOUND. Check the whole
+    # workspace package set is derived from compiled imports and production
+    # dependencies (snap/local/pi-workspace-packages.mjs). Check the whole
     # payload because npm also nests workspace links under per-package
     # node_modules/.
     test -z "$(find /snap/pi-coding-agent/current/lib/pi -type l \
         ! -exec test -e {} \; -print -quit)"
 
-    # Every production dependency declared by a shipped workspace package
-    # must resolve from that package. npm nests a dep under the package's
-    # own node_modules/ when the root holds an incompatible version (e.g.
-    # pi-ai's openai@7); the assembly copies those nested dirs too. Shipping
-    # only the root node_modules dropped openai and crashed pi 0.99.
-    # @earendil-works/* deps are workspace packages covered above.
-    /snap/pi-coding-agent/current/node/bin/node -e '
-      const fs = require("fs");
-      const path = require("path");
-      const { createRequire } = require("module");
-      const PI = "/snap/pi-coding-agent/current/lib/pi";
-      let bad = false;
-      for (const pkg of fs.readdirSync(path.join(PI, "packages"))) {
-        const manifestPath = path.join(PI, "packages", pkg, "package.json");
-        if (!fs.existsSync(manifestPath)) continue;
-        const req = createRequire(manifestPath);
-        const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
-        for (const dep of Object.keys(manifest.dependencies || {})) {
-          if (dep.startsWith("@earendil-works/")) continue;
-          try { req.resolve(dep); }
-          catch (e) {
-            console.error("packages/" + pkg + ": unresolved " + dep + " (" + (e.code || e.message) + ")");
-            bad = true;
+    # Check every declared production dependency from the directory of the
+    # package that declares it, as Node will at runtime. import.meta.resolve
+    # handles ESM-only exports; createRequire covers require-only exports.
+    # Verify the resolved file actually exists (ESM resolution alone need
+    # not check that) and stays inside the snap, including nested deps.
+    # Checking workspace links alone missed chord and telemetry in 1.1.0;
+    # checking only root node_modules missed pi-ai's nested openai in 0.99.
+    PI=/snap/pi-coding-agent/current/lib/pi
+    NODE=/snap/pi-coding-agent/current/node/bin/node
+    for pkg in "$PI"/packages/*; do
+        (cd "$pkg" && "$NODE" --input-type=module -e '
+          import fs from "node:fs";
+          import path from "node:path";
+          import { createRequire } from "node:module";
+          import { fileURLToPath } from "node:url";
+          const root = fs.realpathSync(path.resolve("../.."));
+          const manifest = JSON.parse(fs.readFileSync("package.json", "utf8"));
+          const require = createRequire(import.meta.url);
+          let bad = false;
+          for (const dep of Object.keys(manifest.dependencies || {})) {
+            let resolved;
+            try {
+              const url = import.meta.resolve(dep);
+              resolved = url.startsWith("file:") ? fileURLToPath(url) : url;
+            } catch {
+              try { resolved = require.resolve(dep); } catch { /* reported below */ }
+            }
+            if (!resolved || !path.isAbsolute(resolved) || !fs.existsSync(resolved) ||
+                !fs.realpathSync(resolved).startsWith(root + path.sep)) {
+              console.error(manifest.name + ": missing or external production dependency " + dep +
+                (resolved ? " (" + resolved + ")" : ""));
+              bad = true;
+            }
           }
-        }
-      }
-      process.exit(bad ? 1 : 0);
-    '
+          process.exit(bad ? 1 : 0);
+        ') || exit 1
+    done
+    unset PI NODE
+
+    # The subagent async runner needs this exported subpath, not just
+    # chord's package root. This is an import check, not a model/API test.
+    (cd /snap/pi-coding-agent/current/lib/pi/packages/coding-agent && \
+      /snap/pi-coding-agent/current/node/bin/node --input-type=module -e \
+      'await import("@earendil-works/chord/context")')
