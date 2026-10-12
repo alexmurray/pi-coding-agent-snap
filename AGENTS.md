@@ -25,12 +25,15 @@ runtime for execution:
 7. Assemble the runtime payload into `$SNAP/lib/pi/`: pruned `node_modules/`
    plus `dist/` + `package.json` + `README.md` (and docs/examples/CHANGELOG
    for coding-agent) from the workspace packages pi-coding-agent needs. The
-   package set is **derived** from the actual `@earendil-works/*` imports in
-   the built dist via `snap/local/pi-workspace-packages.mjs` (a hardcoded
-   list silently broke when pi 0.85.1 added `@earendil-works/chord`),
-   dangling workspace symlinks are pruned from `node_modules/`, then strip
-   build artifacts that are never loaded at runtime (source maps, `.d.ts`
-   type declarations, and the `dist/bundle` duplicate) to keep the snap lean
+   package set is **derived** by `snap/local/pi-workspace-packages.mjs` from
+   both compiled `@earendil-works/*` imports and the transitive production
+   workspace dependencies declared by each selected package (not
+   `devDependencies`). Compiled imports alone missed `@earendil-works/chord`
+   and `@earendil-works/pi-telemetry` in pi 1.1.0: extensions and detached
+   subagent runners need packages the CLI never imports directly. Dangling
+   workspace symlinks are pruned from `node_modules/`, then build artifacts
+   that are never loaded at runtime (source maps, `.d.ts` type declarations,
+   and the `dist/bundle` duplicate) are stripped to keep the snap lean
 8. Bundle the Node.js runtime executable into `$SNAP/node/bin/node`;
    `pi.wrapper` execs it against `packages/coding-agent/dist/cli.js`
 9. Install `wl-clipboard` via `stage-packages` from Ubuntu for Wayland
@@ -44,11 +47,12 @@ runtime for execution:
 | `snap/snapcraft.yaml` | Snap build definition with 4 parts |
 | `snap/local/pi.wrapper` | Wrapper that unsets `SNAP_*` env vars |
 | `snap/local/pi.completion` | Bash completion for `pi` and `pi-coding-agent` |
-| `snap/local/pi-workspace-packages.mjs` | Derives the workspace packages to ship from the built dist imports |
+| `snap/local/pi-workspace-packages.mjs` | Derives the workspace packages to ship from compiled imports and transitive production dependencies |
 | `renovate.json` | Custom regex managers for version updates |
 | `spread.yaml` | Spread test backend config (image-garden adhoc backend) |
 | `.image-garden.mk` | image-garden cloud-init user-data templates (core26) |
-| `tests/smoke/pi/task.yaml` | Smoke tests |
+| `tests/smoke/pi/task.yaml` | Snap smoke tests, including production workspace dependency and `chord/context` import checks |
+| `tests/unit/pi-workspace-packages.test.mjs` | Regression test for the workspace selector (`node --test tests/unit/*.test.mjs`; not yet wired into CI) |
 | `.github/workflows/build.yml` | CI entry point; delegates to `tasteful-crafts.yml` |
 | `.github/workflows/tasteful-crafts.yml` | Reusable build → spread → publish orchestrator |
 | `.github/workflows/snapcraft-pack.yml` | Per-architecture snap build (reusable, uses LXD) |
