@@ -28,9 +28,9 @@ runtime for execution:
    package set is **derived** by `snap/local/pi-workspace-packages.mjs` from
    both compiled `@earendil-works/*` imports and the transitive production
    workspace dependencies declared by each selected package (not
-   `devDependencies`). Compiled imports alone missed `@earendil-works/chord`
-   and `@earendil-works/pi-telemetry` in pi 1.1.0: extensions and detached
-   subagent runners need packages the CLI never imports directly. Dangling
+   `devDependencies`). Compiled imports alone do not reach every runtime
+   package: `pi-ai` imports `@earendil-works/pi-telemetry` only as a type,
+   which compiles away. Dangling
    workspace symlinks are pruned from `node_modules/`, then build artifacts
    that are never loaded at runtime (source maps, `.d.ts` type declarations,
    and the `dist/bundle` duplicate) are stripped to keep the snap lean
@@ -51,7 +51,7 @@ runtime for execution:
 | `renovate.json` | Custom regex managers for version updates |
 | `spread.yaml` | Spread test backend config (image-garden adhoc backend) |
 | `.image-garden.mk` | image-garden cloud-init user-data templates (core26) |
-| `tests/smoke/pi/task.yaml` | Snap smoke tests, including production workspace dependency and `chord/context` import checks |
+| `tests/smoke/pi/task.yaml` | Snap smoke tests, including per-package production dependency resolution checks |
 | `tests/unit/pi-workspace-packages.test.mjs` | Regression test for the workspace selector (`node --test tests/unit/*.test.mjs`; not yet wired into CI) |
 | `.github/workflows/build.yml` | CI entry point; delegates to `tasteful-crafts.yml` |
 | `.github/workflows/tasteful-crafts.yml` | Reusable build → spread → publish orchestrator |
@@ -101,7 +101,7 @@ the expected version in `tests/smoke/pi/task.yaml`.
 
 Pi needs both clipboard mechanisms:
 
-- **`@earendil-works/pi-tui` native X11 helper** — bundled Linux prebuild `linux-platform-x11.node` provides X11 clipboard image reading (replaces the former `@mariozechner/clipboard-linux-$ARCH-gnu` optional dependency, removed in pi 0.86.0)
+- **`@earendil-works/pi-tui` native X11 helper** — bundled Linux prebuild `linux-platform-x11.node` provides X11 clipboard image reading
 - **`wl-clipboard`** — `wl-copy`/`wl-paste` for Wayland clipboard (pi explicitly skips
   the native addon on Linux for text operations)
 

@@ -6,23 +6,24 @@
 //
 // The snap payload ships node_modules/ (npm workspace symlinks) plus the
 // dist/, package.json and README.md of each workspace package under
-// packages/. Historically that copy list was hardcoded, so an upstream pi
-// release that adds a new workspace package (e.g. @earendil-works/chord in
-// 0.85.1) shipped a dangling node_modules symlink and crashed at runtime
-// with ERR_MODULE_NOT_FOUND. npm never catches this: npm resolves the
-// symlink inside the build tree, where the target package always exists.
+// packages/. A hardcoded copy list breaks silently when an upstream pi
+// release adds a workspace package: the snap would ship a dangling
+// node_modules symlink and crash at runtime with ERR_MODULE_NOT_FOUND.
+// npm never catches this: npm resolves the symlink inside the build tree,
+// where the target package always exists.
 //
 // Seed with the CLI entry package, then follow both its compiled imports
 // (including subpaths such as @earendil-works/pi-ai/compat) and the declared
-// production workspace dependencies of each selected package. The latter
-// must be available to extensions and detached runners even if the CLI's
-// dist/ never imports them (e.g. @earendil-works/chord/context).
-// Do not follow devDependencies: pi-client/pi-protocol/pi-server are used to
-// build pi but are not part of the CLI's runtime dependency contract.
+// production workspace dependencies of each selected package. Declared
+// dependencies matter because compiled imports alone do not reach every
+// runtime package: @earendil-works/pi-ai imports @earendil-works/pi-telemetry
+// only as a type, which compiles away.
+// Do not follow devDependencies: workspace packages used only to build or
+// test pi are not part of the CLI's runtime dependency contract.
 //
 // Usage (from the pi repo root, after `npm run build:offline`):
 //   node pi-workspace-packages.mjs
-// Prints the workspace package directory names (e.g. "agent", "chord"),
+// Prints the workspace package directory names (e.g. "agent", "ai"),
 // one per line.
 //
 // Options:

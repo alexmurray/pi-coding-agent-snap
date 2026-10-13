@@ -9,7 +9,7 @@ import { test } from "node:test";
 
 const script = new URL("../../snap/local/pi-workspace-packages.mjs", import.meta.url);
 
-test("includes production workspaces used outside CLI imports, but not dev workspaces", (t) => {
+test("follows declared production dependencies beyond compiled imports, skips dev-only workspaces", (t) => {
   const root = mkdtempSync(join(tmpdir(), "pi-workspace-packages-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const scopedRoot = join(root, "node_modules", "@earendil-works");
@@ -23,16 +23,20 @@ test("includes production workspaces used outside CLI imports, but not dev works
     symlinkSync(join("..", "..", "packages", dir), join(scopedRoot, name.split("/")[1]));
   };
 
+  // Mirrors the real dependency shape: pi-telemetry is reachable only
+  // through declared dependencies (pi-ai imports it as a type, which
+  // compiles away), and pi-evals is a workspace nothing depends on in
+  // production.
   pkg("coding-agent", "@earendil-works/pi-coding-agent", {
-    "@earendil-works/chord": "1.1.0",
+    "@earendil-works/pi-agent-core": "1.2.0",
   }, {
-    "@earendil-works/pi-server": "1.1.0",
+    "@earendil-works/pi-evals": "1.2.0",
   }, 'import "@earendil-works/pi-ai/compat";');
-  pkg("chord", "@earendil-works/chord"); // Only an extension/runner imports chord/context.
-  pkg("ai", "@earendil-works/pi-ai", { "@earendil-works/pi-telemetry": "1.1.0" });
+  pkg("agent", "@earendil-works/pi-agent-core", { "@earendil-works/pi-ai": "1.2.0" });
+  pkg("ai", "@earendil-works/pi-ai", { "@earendil-works/pi-telemetry": "1.2.0" });
   pkg("telemetry", "@earendil-works/pi-telemetry");
-  pkg("server", "@earendil-works/pi-server");
+  pkg("evals", "@earendil-works/pi-evals");
 
   const output = execFileSync(process.execPath, [script.pathname, "--scan-root", root], { encoding: "utf8" });
-  assert.deepEqual(output.trim().split("\n"), ["ai", "chord", "coding-agent", "telemetry"]);
+  assert.deepEqual(output.trim().split("\n"), ["agent", "ai", "coding-agent", "telemetry"]);
 });
