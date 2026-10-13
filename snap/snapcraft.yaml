@@ -13,11 +13,9 @@ description: |
   plan mode. Instead, you can ask pi to build what you want or install a
   third party pi package that matches your workflow.
 
-  This snap bundles a Node.js runtime and runs pi's plain (non-Bun)
-  JavaScript CLI, built from the upstream pi repository. Bundling Node.js
-  means no host Node.js install is required, and it avoids pi's
-  Bun-compiled standalone binary, whose hardcoded 5-minute socket timeout
-  breaks long-running requests to local LLM models.
+  This snap bundles a Node.js runtime and runs pi's plain JavaScript CLI,
+  built from the upstream pi repository. Bundling Node.js means no host
+  Node.js install is required.
 
   The snap packaging is maintained separately at
   https://github.com/canonical/pi-coding-agent-snap
@@ -89,12 +87,9 @@ parts:
       cp -r /tmp/node-v*/bin/* /usr/local/bin/
       cp -r /tmp/node-v*/lib/node_modules /usr/local/lib/
 
-      # Runtime payload: pi no longer ships as a Bun-compiled standalone
-      # binary (see https://github.com/canonical/pi-coding-agent-snap/issues/13
-      # — Bun hardcodes a 5 minute socket timeout that breaks long-running
-      # local-model requests: https://github.com/oven-sh/bun/issues/16682).
-      # Bundle the `node` executable itself so pi.wrapper can run pi's
-      # plain Node.js CLI without depending on a host Node.js install.
+      # Runtime payload: pi runs as a plain Node.js CLI. Bundle the
+      # `node` executable itself so pi.wrapper can run it without
+      # depending on a host Node.js install.
       echo "Staging node runtime into the snap payload"
       mkdir -p "${CRAFT_PART_INSTALL}/node/bin"
       cp /tmp/node-v*/bin/node "${CRAFT_PART_INSTALL}/node/bin/node"
@@ -177,7 +172,7 @@ parts:
       fi
 
       # ----------------------------------------------------------
-      # Build all workspace packages with pi's plain (non-Bun) pipeline.
+      # Build all workspace packages with pi's plain npm pipeline.
       # build:offline reuses the model data staged above instead of
       # refreshing it from live provider catalogs.
       # ----------------------------------------------------------
@@ -204,11 +199,12 @@ parts:
       # The set of workspace packages to ship is DERIVED, not hardcoded:
       # snap/local/pi-workspace-packages.mjs follows both compiled
       # @earendil-works/* imports and production workspace dependencies
-      # from coding-agent until a fixpoint. CLI-only imports miss packages
-      # consumed by extensions or detached children (e.g. chord in 1.1.0).
-      # npm resolves links in the build tree even when their targets are
-      # omitted from the snap, so `npm ci`/`npm prune` cannot catch this.
-      # dev-only workspaces (e.g. pi-server) remain excluded.
+      # from coding-agent until a fixpoint. Compiled imports alone do not
+      # reach every runtime package: pi-telemetry is only imported as a
+      # type by pi-ai, which compiles away. npm resolves links in the
+      # build tree even when their targets are omitted from the snap, so
+      # `npm ci`/`npm prune` cannot catch this. Workspace packages that no
+      # staged package depends on in production remain excluded.
       # ----------------------------------------------------------
       WSP_SCRIPT="${CRAFT_PROJECT_DIR}/snap/local/pi-workspace-packages.mjs"
       test -f "$WSP_SCRIPT" || {
@@ -241,9 +237,8 @@ parts:
 
       # ----------------------------------------------------------
       # X11 clipboard image reading is a native prebuild bundled inside
-      # @earendil-works/pi-tui (pi 0.86 replaced the former
-      # @mariozechner/clipboard optionalDependency with this), loaded at
-      # runtime from packages/tui/native/... relative to the installed
+      # @earendil-works/pi-tui, loaded at runtime from
+      # packages/tui/native/... relative to the installed
       # package directory — never from dist/. The copy loop above only
       # ships dist/package.json/README.md, so without this the helper
       # would silently fail to load (no build error, no crash — just no
@@ -293,10 +288,8 @@ parts:
         "${PI_HOME}/packages/coding-agent/"
 
       # npm nests a production dep under a workspace package's own
-      # node_modules/ when the root has an incompatible version (e.g.
-      # pi-ai's openai@7 next to a dev-only openai@6). Node resolves those
-      # from packages/<pkg>/node_modules, so ship them too — copying only
-      # the root node_modules dropped openai and crashed pi 0.99.
+      # node_modules/ when the root has an incompatible version. Node
+      # resolves those from packages/<pkg>/node_modules, so ship them too.
       for pkg in $PACKAGES_TO_COPY; do
         if [ -d "packages/${pkg}/node_modules" ]; then
           cp -a "packages/${pkg}/node_modules" "${PI_HOME}/packages/${pkg}/"

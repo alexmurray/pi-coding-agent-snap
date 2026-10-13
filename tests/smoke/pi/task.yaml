@@ -21,10 +21,9 @@ execute: |
 
     # pi.wrapper arms an AppArmor onexec transition so node and anything it
     # spawns do not inherit the snap's complain-mode label, which otherwise
-    # breaks output redirection of snaps launched by pi (fixes
-    # https://github.com/canonical/pi-coding-agent-snap/issues/26). A
-    # NODE_OPTIONS preload reports the labels of node and of a child, then
-    # exits before pi starts.
+    # breaks output redirection of snaps launched by pi. A NODE_OPTIONS
+    # preload reports the labels of node and of a child, then exits before
+    # pi starts.
     cat > /tmp/pi-label.js <<'EOF'
     const fs = require("fs");
     const cp = require("child_process");
@@ -40,9 +39,8 @@ execute: |
     MATCH '^child: unconfined$' < pi-labels.txt
     rm -f /tmp/pi-label.js pi-labels.txt
 
-    # Verify the new Node.js-runtime layout (fixes
-    # https://github.com/canonical/pi-coding-agent-snap/issues/13: the
-    # previous Bun-compiled binary hardcoded a 5-minute socket timeout).
+    # Verify the runtime layout: the snap bundles its own node executable
+    # and runs packages/coding-agent/dist/cli.js; no bin/pi launcher exists.
     /snap/pi-coding-agent/current/node/bin/node --version 2>&1 | MATCH "v22"
     test -e /snap/pi-coding-agent/current/lib/pi/packages/coding-agent/dist/cli.js
     test ! -e /snap/pi-coding-agent/current/bin/pi
@@ -52,10 +50,9 @@ execute: |
     test -e /snap/pi-coding-agent/current/lib/pi/LICENSE
 
     # X11 clipboard image-paste is a native prebuild bundled inside
-    # @earendil-works/pi-tui (pi 0.86 replaced the former
-    # @mariozechner/clipboard-linux-*-gnu optional dependency with this);
-    # it is loaded relative to the installed package directory, never
-    # from dist/, so the snap's assembly step must stage it explicitly.
+    # @earendil-works/pi-tui; it is loaded relative to the installed
+    # package directory, never from dist/, so the snap's assembly step must
+    # stage it explicitly.
     # Verify it shipped for the arch under test rather than assuming the
     # per-package dist/package.json/README.md copy covered it. riscv64
     # ships no prebuild (pi falls back to wl-clipboard), so there the
@@ -79,8 +76,7 @@ execute: |
 
     # The staged wl-clipboard tools must actually start: their ELF
     # interpreter has to exist inside core26 (amd64 keeps it in lib64,
-    # arm64/riscv64 in lib — a wrong path fails at exec with ENOENT,
-    # which is how the arm64 stable snap shipped broken wl-copy).
+    # arm64/riscv64 in lib — a wrong path fails at exec with ENOENT).
     # pi.wrapper puts $SNAP/usr/bin on PATH so pi finds these, not any
     # host-installed copy.
     /snap/pi-coding-agent/current/usr/bin/wl-copy --help > /dev/null
@@ -106,8 +102,9 @@ execute: |
     # handles ESM-only exports; createRequire covers require-only exports.
     # Verify the resolved file actually exists (ESM resolution alone need
     # not check that) and stays inside the snap, including nested deps.
-    # Checking workspace links alone missed chord and telemetry in 1.1.0;
-    # checking only root node_modules missed pi-ai's nested openai in 0.99.
+    # Resolving per package matters: npm nests workspace links and
+    # duplicated dependencies under per-package node_modules/, which a
+    # root-only check would miss.
     PI=/snap/pi-coding-agent/current/lib/pi
     NODE=/snap/pi-coding-agent/current/node/bin/node
     for pkg in "$PI"/packages/*; do
@@ -139,9 +136,3 @@ execute: |
         ') || exit 1
     done
     unset PI NODE
-
-    # The subagent async runner needs this exported subpath, not just
-    # chord's package root. This is an import check, not a model/API test.
-    (cd /snap/pi-coding-agent/current/lib/pi/packages/coding-agent && \
-      /snap/pi-coding-agent/current/node/bin/node --input-type=module -e \
-      'await import("@earendil-works/chord/context")')

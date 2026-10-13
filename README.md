@@ -28,7 +28,7 @@ The snap builds pi from source with npm and bundles a real Node.js runtime, so
 it does not depend on a Node.js install on the host. Inside the LXD build
 container:
 
-1. **Clone** upstream pi at a pinned Git tag (e.g., `v0.84.2`)
+1. **Clone** upstream pi at a pinned Git tag (e.g., `v1.2.0`)
 2. **Install Node.js 22.x** — prebuilt binary from nodejs.org (pi requires
    ≥22.19); the same binary is later staged into the snap as the runtime
    `node` executable
@@ -51,12 +51,12 @@ container:
 7. **Assemble runtime payload** into `$SNAP/lib/pi/` — pruned `node_modules/`
    plus `dist/`, `package.json`/`README.md`, and each workspace package's own
    nested `node_modules/` when npm placed production deps there instead of
-   hoisting them (e.g. pi-ai's `openai@7`). The workspace package set is
+   hoisting them. The workspace package set is
    *derived* by `snap/local/pi-workspace-packages.mjs` from both compiled
    `@earendil-works/*` imports and transitive declared production workspace
-   dependencies (not `devDependencies`). This includes packages needed by
-   extensions and detached runners even when the CLI does not import them
-   directly (e.g. `@earendil-works/chord` in pi 1.1.0). Dangling workspace
+   dependencies (not `devDependencies`). Compiled imports alone do not reach
+   every runtime package: `pi-ai` imports `@earendil-works/pi-telemetry` only
+   as a type, which compiles away. Dangling workspace
    symlinks are deleted from the payload; maps, `.d.ts` files, and the
    `dist/bundle` duplicate are then stripped
 8. **Bundle the Node.js runtime** at `$SNAP/node/bin/node`; the wrapper
@@ -83,7 +83,7 @@ Pi's clipboard logic differs by display server — so we need **both** mechanism
 | **Wayland** | `wl-copy` (native addon explicitly skipped on Linux) | `wl-paste` → `xclip` |
 | **X11** | `xclip` / `xsel` (native addon skipped) | `@earendil-works/pi-tui` native X11 helper (`linux-platform-x11.node`) |
 
-- `@earendil-works/pi-tui` ships bundled Linux prebuilds (`packages/tui/native/linux/prebuilds/.../linux-platform-x11.node`) for X11 clipboard image reading; the former `@mariozechner/clipboard-linux-$ARCH-gnu` optional dependency was removed in pi 0.86.0
+- `@earendil-works/pi-tui` ships bundled Linux prebuilds (`packages/tui/native/linux/prebuilds/.../linux-platform-x11.node`) for X11 clipboard image reading
 - `wl-clipboard` (Ubuntu package via `stage-packages`) provides
   `wl-copy`/`wl-paste` for Wayland clipboard
 
